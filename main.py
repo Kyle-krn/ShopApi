@@ -1,3 +1,4 @@
+import asyncio
 from fastapi import FastAPI
 from aiogram import Dispatcher, Bot
 from settings import BOT_TOKEN
@@ -8,7 +9,6 @@ from tortoise.contrib.fastapi import register_tortoise
 import settings
 # from tortoise import Tortoise
 from app import routers
-
 # fastapi_users = FastAPIUsers(
 #     get_user_manager,
 #     [auth_backend],
@@ -38,15 +38,17 @@ dp = Dispatcher(bot)
 
 
 
-register_tortoise(
-                        app,
+register_tortoise(      app,
                         db_url=f"postgres://{settings.USER}:{settings.PASSWORD}@{settings.HOST}:{settings.PORT}/{settings.DATABASE}",
                         modules={"models": settings.APPS_MODELS},
                         generate_schemas=True,
                         add_exception_handlers=True,
                         )
 # Tortoise.init_models(APPS_MODELS, 'models')
+# async def start_row_db():
 
+
+# asyncio.create_task(start_row_db())
 
 # if __name__ == "__main__":
 #     await Users.create()

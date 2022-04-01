@@ -1,25 +1,32 @@
 from math import prod
 from fastapi import APIRouter, HTTPException
-from ..models import Product, Category, JsonbSet
-from ..schemas import GetProduct, CreateProduct, validate_json_attr, Status
+from ..models import Product, Category
+from ..schemas import GetProduct, CreateProduct, ProductAttr, validate_json_attr, Status, CategoryFilters
 from tortoise.contrib.fastapi import HTTPNotFoundError
 from typing import List, Any
 from tortoise.contrib.pydantic import pydantic_model_creator, PydanticModel
 from .. import schemas, service, models
 from tortoise.expressions import F
 from pypika.terms import Function
-
+from tortoise import Tortoise
 product_router = APIRouter()
 
 
 @product_router.post("/create", response_model=GetProduct)
 async def create_product(product: CreateProduct):
+    '''Если не передать в теле запроса attributes : [] и у категории есть фильтры, то атрибуты автоматически добавятся со значением None'''
     category = await Category.get(id = product.category_id)
     children = category.children
     if len(await children) != 0:
         raise HTTPException(status_code=400, detail=f"Нельзя добавлять товар в категорию с подкатегориями.")
     try:
-        validate_json_attr(category.filters, product.attributes)
+        c_f = [CategoryFilters(name=i["name"], value=i["value"], prefix=i["prefix"]) for i in category.filters]
+        if product.attributes:
+            validate_json_attr(c_f, product.attributes)
+        else:
+        #     print(c_f)
+            def_attrs = [ProductAttr(name=i.name, value=None) for i in c_f]
+            product.attributes = def_attrs
     except (IndexError, TypeError) as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -51,16 +58,15 @@ async def get_product_by_id(category_id):
     return await GetProduct.from_queryset(Product.filter(category_id=category_id))
 
 
+
 @product_router.patch("/{product_id}", response_model=GetProduct, responses={404: {"model": HTTPNotFoundError}})
 async def update_product(product_id):
     product_obj = await Product.get(id=product_id)
 
 
+
+
 @product_router.get("/{product_id}", response_model=GetProduct, responses={404: {"model": HTTPNotFoundError}})
 async def get_product(product_id):
     product_obj = await Product.get(id=product_id)
-    product_obj.attributes = {}
-    await product_obj.save()
-    # sql = Product.filter(pk=product_id).update(attributes=JsonbSet(F("attributes"), "{a}", "3")).sql()
-    # print(sql)
     return await GetProduct.from_tortoise_orm(await Product.get(id=product_id))

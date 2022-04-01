@@ -1,4 +1,5 @@
-from typing import Any, List, Optional, Type
+from sys import prefix
+from typing import Any, List, Optional, Type, Union
 from pydantic import BaseModel
 from tortoise.contrib.pydantic import pydantic_model_creator, PydanticModel
 from .models import Category, Product
@@ -9,12 +10,22 @@ GetCategory = pydantic_model_creator(Category, name="Category")
 
 class ProductAttr(PydanticModel):
     name: str
-    value: Any
+    value: Union[int, float, bool, str, list] = None
+
+
 
 class CategoryFilters(ProductAttr):
     prefix: str
+    value: Union[int, float, bool, str, list]
 
 
+class RemoveAttr(PydanticModel):
+    name: str
+
+class ChangeNameAttr(PydanticModel):
+    old_name: str
+    new_name: str
+    prefix: Optional[str]
 
 class CreateCategory(PydanticModel):
     name: str
@@ -50,17 +61,12 @@ class CreateProduct(PydanticModel):
     name: str
     price: float
     discount: Optional[float] = 0.0
-    description: str
+    description: Optional[str]
     category_id: int
-    attributes: List[ProductAttr]
+    attributes: Optional[List[ProductAttr]]
 
-    # @staticmethod
+
 def validate_json_attr(attr_category, attr_product):
-
-    # for i in attr_product:
-    #     print(attr_product)
-
-
     tuple_attr_category = tuple([i.name for i in attr_category]) if attr_category else None
     tuple_attr_product = tuple([i.name for i in attr_product]) if attr_product else None
     if tuple_attr_product != tuple_attr_category:
@@ -68,9 +74,9 @@ def validate_json_attr(attr_category, attr_product):
 
 
     for attr in attr_category:
-        category_type = type(attr["value"])
-        result = list(filter(lambda x: (x["name"] == attr["name"]), attr_product))
-        product_type = type(result[0]['value'])
+        category_type = type(attr.value)
+        result = list(filter(lambda x: (x.name == attr.name), attr_product))
+        product_type = type(result[0].value)
         if category_type != product_type:
-            raise TypeError(f"Атрибут '{attr['name']}' ожидает тип {category_type}")
+            raise TypeError(f"Атрибут '{attr.name}' ожидает тип {category_type}")
 
