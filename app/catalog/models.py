@@ -1,22 +1,19 @@
 from email.policy import default
-import imp
 from typing import Any
-from unicodedata import category
-from xml.etree.ElementInclude import include
-from attr import attributes
 from tortoise import Tortoise, fields
 from tortoise.models import Model
 from decimal import Decimal
 from tortoise.expressions import F
 from pypika.terms import Function
-
+from slugify import slugify
 
 class Category(Model):
     id: int = fields.IntField(pk=True)
-    name: str = fields.CharField(max_length=200)
+    name: str = fields.CharField(max_length=200, unique=True)
     parent: fields.ForeignKeyNullableRelation["Category"] = fields.ForeignKeyField(
         "models.Category", related_name="children", null=True, on_delete="SET NULL"
     )
+    slug: str = fields.CharField(max_length=200, unique=True)
     children: fields.ReverseRelation["Category"]
     products: fields.ReverseRelation["Product"]
     filters = fields.JSONField(null=True)
@@ -29,20 +26,33 @@ class Category(Model):
         allow_cycles = True
         max_recursion = 4
 
+    async def save(self, *args, **kwargs):
+        slug = slugify(self.name)
+        self.slug = slug
+        await super().save(*args, **kwargs)
+
     
 
 
 class Product(Model):
     id: int = fields.IntField(pk=True)
-    name: str = fields.CharField(max_length=200)
+    name: str = fields.CharField(max_length=200, unique=True)
     price: Decimal = fields.DecimalField(max_digits=1000, decimal_places=2)
     discount: Decimal = fields.DecimalField(max_digits=1000, decimal_places=2, default=0.0)
     category: fields.ForeignKeyNullableRelation["Category"] =  fields.ForeignKeyField("models.Category", related_name="products", null=True, on_delete="SET NULL")
     description: str = fields.TextField(default="")
-    # photo = fields.JSONField(null=True)
+    slug: str = fields.CharField(max_length=200, unique=True)
+    photo = fields.JSONField(default=[])
+    is_active = fields.BooleanField(default=False)
+    # quantity: int = fields.IntField(default=0)
     attributes = fields.JSONField()
     updated_at = fields.DatetimeField(auto_now=True)
     created_at = fields.DatetimeField(auto_now_add=True)
+
+    async def save(self, *args, **kwargs):
+        slug = slugify(self.name)
+        self.slug = slug
+        await super().save(*args, **kwargs)
 
 
 
@@ -90,5 +100,21 @@ async def rowsql_update_attr_name(old_name: str, new_name: str, prefix: str, cat
     
     sql = '''UPDATE category SET filters = change_value(filters, '{"name": "%s"}', '%s') WHERE id = %s''' % (old_name, json_new_value_string, category_id)
     await conn.execute_query(sql)
+
+
+async def rowsql_append_filepath_photo_product(string_array: str, product_id: str):
+    conn = Tortoise.get_connection("default")
+    sql = f'''UPDATE product
+             SET photo = photo || '{string_array}'::jsonb
+             WHERE id = {product_id};'''
+    await conn.execute_query(sql)
+
+async def rowsql_remove_photo_product(string_qury: str, product_id: str):
+    conn = Tortoise.get_connection("default")
+    sql = f'''UPDATE product
+             SET photo = photo - {string_qury}
+             WHERE id = {product_id};'''
+    await conn.execute_query(sql)
+
 
 Tortoise.init_models(["app.catalog.models"], "models")

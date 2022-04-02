@@ -31,7 +31,6 @@ class CreateCategory(PydanticModel):
     name: str
     parent_id: int = None
     filters: List[CategoryFilters] = []
-    # filters: Optional[list] = []
 
 
 class UpdateCategory(PydanticModel):
@@ -54,7 +53,11 @@ class UpdateProduct(PydanticModel):
     price: Optional[float]
     discount: Optional[float]
     category_id: Optional[int]
+    description: Optional[str]
+    is_active: Optional[bool]
     attributes: Optional[List[ProductAttr]]
+    photo: Optional[List[str]]
+
 
 
 class CreateProduct(PydanticModel):
@@ -66,7 +69,11 @@ class CreateProduct(PydanticModel):
     attributes: Optional[List[ProductAttr]]
 
 
-def validate_json_attr(attr_category, attr_product):
+class Images(PydanticModel):
+    photo: list
+
+
+def validate_json_attr(attr_category: CategoryFilters, attr_product: ProductAttr):
     tuple_attr_category = tuple([i.name for i in attr_category]) if attr_category else None
     tuple_attr_product = tuple([i.name for i in attr_product]) if attr_product else None
     if tuple_attr_product != tuple_attr_category:

@@ -43,14 +43,16 @@ async def patch_category(category_id: int, category: UpdateCategory):
        Фильтры для категорий предназначены для фильтрации товара в каталоге, если по этому эндпоинту передать filters, то у всех товаров в этой категории 
        полностью перепишутся атрибуты, для bool значений передавайте "false" or "true".
     """
-    
     category_obj = await Category.get(id=category_id)
+    
     if category.parent_id:
+        '''Проверяем если у родительской категории товар'''
         parent_category_products = Product.filter(category_id=category.parent_id)
         if len(await parent_category_products) > 0:
             raise HTTPException(status_code=400, detail=f"Нельзя добавлять подкатегорию в категорию с товарами.")
 
     if category.filters and category.filters != []:
+        
         if len(await category_obj.children.all()) > 0:
             raise HTTPException(status_code=400, detail=f"Нельзя добавлять фильтры в категорию с подкатегориями.")
         attr_for_product = [{"name":i.name, "value":None} for i in category.filters]
