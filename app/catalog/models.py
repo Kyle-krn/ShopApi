@@ -2,7 +2,7 @@ from tortoise import Tortoise, fields
 from tortoise.models import Model
 from decimal import Decimal
 from slugify import slugify
-
+# import app.orders.models
 
 class Category(Model):
     id: int = fields.IntField(pk=True)
@@ -44,6 +44,7 @@ class Product(Model):
     updated_at = fields.DatetimeField(auto_now=True)
     created_at = fields.DatetimeField(auto_now_add=True)
     weight: int = fields.IntField() # Вес в граммах
+    # sales: fields.ReverseRelation["app.orders.models.SaleProduct"]
 
     async def save(self, *args, **kwargs):
         slug = slugify(self.name)
