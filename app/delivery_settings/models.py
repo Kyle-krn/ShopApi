@@ -14,8 +14,5 @@ class PickUpSettings(Model):
     address: str = fields.CharField(max_length=255) 
     latitude: str = fields.FloatField()
     longitude: str = fields.FloatField()
-    # address1: str = fields.CharField(max_length=255) 
-    # latitude longitude
-
 
 Tortoise.init_models(["app.delivery_settings.models"], "models")

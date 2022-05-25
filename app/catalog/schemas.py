@@ -1,5 +1,4 @@
 from __future__ import annotations
-from operator import imod
 from typing import Any, List, Optional
 from pydantic import BaseModel, validator
 from tortoise.contrib.pydantic import pydantic_model_creator, PydanticModel
@@ -43,9 +42,6 @@ async def build_children(category_list: List[Category], recursion_deep: int, act
                                      products=await active_products_queryset(i.id),
                                      children=await build_children(await i.children, recursion_deep=recursion_deep-1)) for i in category_list]
 
-
-GetOnlyCategory = pydantic_model_creator(Category, 
-                                         name="CategoryForCatalog",)
 
 
 class ProductAttr(PydanticModel):
@@ -131,9 +127,6 @@ class PaginationProduct(BaseModel):
     products: List[GetProduct]
 
 
-# class QueryAttrs(BaseModel):
-#     min: Union[int, float]
-#     max: 
 
 class QuryProducts(BaseModel):
     min_price: Optional[float]
@@ -185,7 +178,6 @@ class Images(PydanticModel):
 
 
 def validate_json_attr(attr_category: CategoryFilters, attr_product: ProductAttr):
-
     if len(attr_product) > len(attr_category):
         raise IndexError(f"Должно быть {len(attr_category)} атрибутов.")
     for attr in attr_product:

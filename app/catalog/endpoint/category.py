@@ -1,31 +1,23 @@
-from ctypes import Union
-from itertools import product
-from urllib import response
 from fastapi import APIRouter, Depends, HTTPException
 from app.users.models import UserDB
 from app.users.route import current_active_user, current_superuser
 from ..models import Product, Category
-from ..schemas import CategoryFilters, ChangeNameAttr, GetCategory, GetOnlyCategory, CreateCategory, UpdateCategory, Status, RemoveAttr
+from ..schemas import (CategoryFilters, ChangeNameAttr, GetCategory, CreateCategory, 
+                      UpdateCategory, Status, RemoveAttr, CatalogWithActiveProduct, 
+                      active_products_queryset, build_children)
 from tortoise.contrib.fastapi import HTTPNotFoundError
 from typing import List
-
 from utils.row_sql.rowsql_query import (rowsql_add_attrs_for_all_category, rowsql_get_distinct_list_value, 
-rowsql_remote_attrs_for_all_category, rowsql_update_attr_name, rowsql_get_distinct_string_value, rowsql_get_min_max_list_value, rowsql_get_min_max_price_discount)
-
-# from utils.utils import generate_string_sql_query
-# from ..models import rowsql_add_attrs_for_all_category, rowsql_remote_attrs_for_all_category, rowsql_update_attr_name
-from ..schemas import CatalogWithActiveProduct, active_products_queryset, build_children
+                                        rowsql_remote_attrs_for_all_category, rowsql_update_attr_name, 
+                                        rowsql_get_distinct_string_value, rowsql_get_min_max_list_value, rowsql_get_min_max_price_discount)
 
 
 category_router = APIRouter()
 
-# POST
-
-# НУЖНА ВАЛИДАЦИЯ МАССИВА В ФИЛЬТРАХ И АТРИБУТАХ ЧТО ТАМ ТОЛЬКО СТРИНГ
-
-
+# Создать категорию
 @category_router.post("/create", response_model=GetCategory)
-async def category_route(category: CreateCategory, user: UserDB = Depends(current_superuser)):
+async def category_route(category: CreateCategory, 
+                         user: UserDB = Depends(current_superuser)):
     """Создать категорию. Нельзя добавлять в родительскую категорию категории которые имеют товары или фильтры к товарам
     """
     if category.parent_id is not None:
@@ -41,9 +33,9 @@ async def category_route(category: CreateCategory, user: UserDB = Depends(curren
 
 # GET 
 @category_router.get("/main", response_model_include={List[CatalogWithActiveProduct], List[GetCategory]})
-async def get_users(user: UserDB = Depends(current_active_user), active: int = 0):
+async def get_users(active: int = 0,
+                    user: UserDB = Depends(current_active_user)):
     """Получить список категорий"""
-    # print(await GetOnlyCategory.from_tortoise_orm(await Category.get(id=1)))
     categories = await Category.filter(parent_id__isnull=True)
     if active:
         return [CatalogWithActiveProduct(id=category.id,
@@ -53,12 +45,14 @@ async def get_users(user: UserDB = Depends(current_active_user), active: int = 0
                                     filters=category.filters,
                                     products=await active_products_queryset(category.id),
                                     children=await build_children(await category.children, recursion_deep=3)) for category in categories]
-    return await GetOnlyCategory.from_queryset(Category.filter(parent_id__isnull=True))
+    return await GetCategory.from_queryset(Category.filter(parent_id__isnull=True))
 
 
 
 @category_router.get("/{category_id}", response_model_include={CatalogWithActiveProduct, GetCategory}, responses={404: {"model": HTTPNotFoundError}})
-async def get_category(category_id: int, user: UserDB = Depends(current_active_user), active: bool = False):
+async def get_category(category_id: int, 
+                       active: bool = False, 
+                       user: UserDB = Depends(current_active_user)):
     """Получить категорию по id"""
     category = await Category.get(id=category_id)
     if active:
@@ -69,8 +63,7 @@ async def get_category(category_id: int, user: UserDB = Depends(current_active_u
                                     filters=category.filters,
                                     products=await active_products_queryset(category_id),
                                     children=await build_children(await category.children, recursion_deep=3))
-
-    return await GetOnlyCategory.from_tortoise_orm(await Category.get(id=category_id))
+    return await GetCategory.from_tortoise_orm(await Category.get(id=category_id))
 
 
 @category_router.get("/light/{category_id}", response_model=CatalogWithActiveProduct)
@@ -82,12 +75,11 @@ async def get_control_category(category_id,
                                children: bool = False,
                                children_count: bool = False,
                                products: bool = False,
-                               products_count: bool = False
-                            #    active: bool = False
+                               products_count: bool = False,
+                               user: UserDB = Depends(current_active_user)
                                ):
     '''Отдает настраиваемую модель категории'''
     category = await Category.get(id=category_id)
-    print(category.parent_id)
     response_model = CatalogWithActiveProduct(id=category.id)
     if name:
         response_model.name = category.name
@@ -109,7 +101,9 @@ async def get_control_category(category_id,
     
 
 @category_router.get("/get_list_string_attr_value/{category_id}")
-async def get_list_string_attr_value(category_id:int, attr_name: str):
+async def get_list_string_attr_value(category_id:int, 
+                                     attr_name: str, 
+                                     user: UserDB = Depends(current_active_user)):
     '''Отдает уникальные значение атриубта в товарах для всей категории'''
     category = await Category.get(id=category_id)
     filter = [i for i in category.filters if i['name'] == attr_name]
@@ -120,13 +114,14 @@ async def get_list_string_attr_value(category_id:int, attr_name: str):
         return [i["value"] for i in queryset]
     elif type(filter[0]['value']) == list:
         queryset = await rowsql_get_distinct_list_value(category_id=category_id, attr_name=attr_name)
-        print(queryset)
         return [i["value"].split('"')[1] for i in queryset]
     else:
         raise HTTPException(status_code=400, detail=f"Атрибут {attr_name} не list и не str.")
 
 @category_router.get("/get_min_max_digit_attr_value/{category_id}")
-async def get_min_max_digit_attr_value(category_id: int, attr_name: str):
+async def get_min_max_digit_attr_value(category_id: int, 
+                                       attr_name: str,
+                                       user: UserDB = Depends(current_active_user)):
     """Отдает min max для числовых атрибутов"""
     category = await Category.get(id=category_id)
     filter = [i for i in category.filters if i['name'] == attr_name]
@@ -144,11 +139,11 @@ async def get_min_max_for_price_discount(category_id: int):
     return queryset[0]
 
         
-
-
 # PATCH
 @category_router.patch("/{category_id}", response_model=GetCategory, responses={404: {"model": HTTPNotFoundError}})
-async def patch_category(category_id: int, category: UpdateCategory, user: UserDB = Depends(current_superuser)):
+async def patch_category(category_id: int, 
+                         category: UpdateCategory, 
+                         user: UserDB = Depends(current_superuser)):
     """Изменить категорию. Нельзя добавлять в родительскую категорию категории которые имеют товары или фильтры к товарам,
        Фильтры для категорий предназначены для фильтрации товара в каталоге, если по этому эндпоинту передать filters, то у всех товаров в этой категории 
        полностью перепишутся атрибуты, для bool значений передавайте "false" or "true".
@@ -177,13 +172,11 @@ async def patch_category(category_id: int, category: UpdateCategory, user: UserD
     return await GetCategory.from_tortoise_orm(category_obj)
 
 
-# SET attributes = attributes || '{"name": "newattr", "value": true}'
-
-
 @category_router.patch("/add_attr/{category_id}", response_model=GetCategory, responses={404: {"model": HTTPNotFoundError}})
-async def add_attr_in_category(category_id, category_attrs: List[CategoryFilters], user: UserDB = Depends(current_superuser)):
+async def add_attr_in_category(category_id: int, 
+                               category_attrs: List[CategoryFilters], 
+                               user: UserDB = Depends(current_superuser)):
     '''Добавляет атрибуты в фильтры категории и автоматически добавляет атрибут ко всем товарам в категории со значением None, для bool значений передавайте строку "false" or "true"'''
-    print(category_attrs)
     category = await Category.get(id=category_id)
     category_attrs_for_sql = []
     for attr in category_attrs:
@@ -191,15 +184,15 @@ async def add_attr_in_category(category_id, category_attrs: List[CategoryFilters
         if not result:
             '''Если в body передается атрибут который уже есть в фильтрах категории, он просто пропускается'''
             category_attrs_for_sql.append(attr)
-    # string_sql_for_category, string_sql_for_product  = await generate_string_sql_query(category_attrs_for_sql)
-    # if string_sql_for_category:
     await rowsql_add_attrs_for_all_category(category_attrs_for_sql, category_id)
     
     return await GetCategory.from_tortoise_orm(await Category.get(id=category_id))
 
 
 @category_router.patch("/change_attr/{category_id}", response_model=GetCategory, responses={404: {"model": HTTPNotFoundError}})
-async def change_attr(category_id, data_attr: List[ChangeNameAttr], user: UserDB = Depends(current_superuser)):
+async def change_attr(category_id: int, 
+                      data_attr: List[ChangeNameAttr], 
+                      user: UserDB = Depends(current_superuser)):
     '''Изменяет имя или префикс фильтра и атрибутов'''
     category = await Category.get(id=category_id)
     category_attrs_for_sql = []
@@ -213,7 +206,9 @@ async def change_attr(category_id, data_attr: List[ChangeNameAttr], user: UserDB
 
 
 @category_router.patch("/remove_attr/{category_id}", response_model=GetCategory, responses={404: {"model": HTTPNotFoundError}})
-async def remote_attr_in_category(category_id, remove_attrs: List[RemoveAttr], user: UserDB = Depends(current_superuser)):
+async def remote_attr_in_category(category_id: int, 
+                                  remove_attrs: List[RemoveAttr], 
+                                  user: UserDB = Depends(current_superuser)):
     '''Удаляет атрибут из фильтра категории и из всех товаров категории'''
     category = await Category.get(id=category_id)
     remove_attrs_for_sql = []
@@ -228,7 +223,8 @@ async def remote_attr_in_category(category_id, remove_attrs: List[RemoveAttr], u
 
 # DELETE
 @category_router.delete("/{category_id}", response_model=Status, responses={404: {"model": HTTPNotFoundError}})
-async def delete_category(category_id: int, user: UserDB = Depends(current_superuser)):
+async def delete_category(category_id: int, 
+                          user: UserDB = Depends(current_superuser)):
     '''Удаляет категорию, для ее товаров в category_id становится null'''
     deleted_count = await Category.filter(id=category_id).delete()
     if not deleted_count:

@@ -4,7 +4,9 @@ from app.users.models import UserDB
 from app.users.route import current_active_user, current_superuser
 from ..models import Product, Category
 from utils.row_sql.rowsql_query import rowsql_filtering_json_field
-from ..schemas import GetProduct, CreateProduct, PaginationProduct, ProductAttr, UpdateProduct, validate_json_attr, Status, CategoryFilters, Images, QuryProducts
+from ..schemas import (GetProduct, CreateProduct, PaginationProduct, ProductAttr, 
+                       UpdateProduct, validate_json_attr, Status, CategoryFilters, 
+                       Images, QuryProducts)
 from tortoise.contrib.fastapi import HTTPNotFoundError
 from typing import List
 from fastapi import UploadFile
@@ -16,16 +18,16 @@ import shutil
 
 product_router = APIRouter()
 
-
+# Создать товар
 @product_router.post("/create", response_model=GetProduct)
-async def create_product(product: CreateProduct, user: UserDB = Depends(current_superuser)):
+async def create_product(product: CreateProduct, 
+                         user: UserDB = Depends(current_superuser)):
     '''Если не передать в теле запроса attributes : [] и у категории есть фильтры, то атрибуты автоматически добавятся со значением None'''
     category = await Category.get(id = product.category_id)
     children = category.children
     if len(await children) != 0:
         raise HTTPException(status_code=400, detail=f"Нельзя добавлять товар в категорию с подкатегориями.")
     try:
-        # Продолжить здесь, сделать что бы можно было передавать только часть атрибутов и проверить что там с типами данных
         c_f = [CategoryFilters(name=i["name"], value=i["value"], prefix=i["prefix"]) for i in category.filters]
         if product.attributes:
             validate_json_attr(c_f, product.attributes)
@@ -43,9 +45,11 @@ async def create_product(product: CreateProduct, user: UserDB = Depends(current_
     product_obj = await Product.create(**product.dict())
     return await GetProduct.from_tortoise_orm(product_obj)
 
-
+# Загрузить фото в товар
 @product_router.post("/upload_photo/{product_id}", response_model=GetProduct, responses={404: {"model": HTTPNotFoundError}})
-async def upload_photo_product(product_id: int, files: List[UploadFile], user: UserDB = Depends(current_superuser)):
+async def upload_photo_product(product_id: int, 
+                               files: List[UploadFile], 
+                               user: UserDB = Depends(current_superuser)):
     '''Добавление фото к товару, IMAGES_TYPES = ('jpg', 'jpeg', 'png')'''
     product = await Product.get(id=product_id)
     IMAGES_TYPES = ('jpg', 'jpeg', 'png')
@@ -60,15 +64,13 @@ async def upload_photo_product(product_id: int, files: List[UploadFile], user: U
         filename = product.slug + "_" + await generate_random_string(6) + "." +file.filename.split('.')[-1]
         async with aiofiles.open(full_path + filename, 'wb') as out_file:
             content = await file.read()  # async read
-            # if len(content) > 5242880:
-            #     raise HTTPException(status_code=400, detail=f"Фото превышает 5 мб.")
             await out_file.write(content)
             product.photo.append(folder_path + filename)
     await product.save()
 
     return await GetProduct.from_tortoise_orm(await Product.get(id=product_id))
 
-
+# Поиск в категории по аттрибутам
 @product_router.post("/query_by_category/{category_id}", response_model=PaginationProduct, responses={404: {"model": HTTPNotFoundError}})
 async def query_products(category_id: int, 
                          query:QuryProducts = None,
@@ -77,58 +79,44 @@ async def query_products(category_id: int,
                          user: UserDB = Depends(current_active_user),):
     
     if query and query.attributes:
-        x = await rowsql_filtering_json_field(category_id=category_id, query=query)
+        products = await rowsql_filtering_json_field(category_id=category_id, query=query)
         get_product = []
-        for i in x:
+        for i in products:
             del i['created_at']
             del i['updated_at']
             get_product.append(GetProduct(**i))
-        return PaginationProduct(count=len(x), products=get_product)
-        # for i in x:
-            # return PaginationProduct(count=)
-        return
+        return PaginationProduct(count=len(products), products=get_product)
 
-    x = (Q(category_id=category_id) & Q(is_active=True))
+    q_query = (Q(category_id=category_id) & Q(is_active=True))
     if query and query.min_price:
-        x = x & Q(price__gte=query.min_price)
+        q_query = q_query & Q(price__gte=query.min_price)
     if query and query.max_price:
-        x = x & Q(price__lte=query.max_price)
-    queryset = Product.filter(x).offset(offset).limit(limit)
-    # print(await Product.filter(x)])
-    # print(type(products))
-    return PaginationProduct(count=await Product.filter(x).count(), products=await GetProduct.from_queryset(queryset))
+        q_query = q_query & Q(price__lte=query.max_price)
+    queryset = Product.filter(q_query).offset(offset).limit(limit)
+    return PaginationProduct(count=await Product.filter(q_query).count(), products=await GetProduct.from_queryset(queryset))
     
-
-
-
-
-
-
+# Получить все товары
 @product_router.get("/all", response_model=List[GetProduct])
 async def get_all_product(user: UserDB = Depends(current_active_user)):
     return await GetProduct.from_queryset(Product.all())
 
-
+# Получить товары по категории
 @product_router.get("/by_category/{category_id}", response_model=List[GetProduct], responses={404: {"model": HTTPNotFoundError}})
-async def get_product_by_id(category_id, user: UserDB = Depends(current_active_user)):
+async def get_product_by_id(category_id: int, 
+                            user: UserDB = Depends(current_active_user)):
     return await GetProduct.from_queryset(Product.filter(category_id=category_id))
 
-
-
+# Получить товар
 @product_router.get("/{product_id}", response_model=GetProduct, responses={404: {"model": HTTPNotFoundError}})
-async def get_product(product_id, user: UserDB = Depends(current_active_user)):
-    # product_obj = await Product.get(id=product_id)
-    # product_obj.weight = 99
-    # await product_obj.save()
+async def get_product(product_id: int, 
+                      user: UserDB = Depends(current_active_user)):
     return await GetProduct.from_tortoise_orm(await Product.get(id=product_id))
 
-
-
-
-
-
+# Удалить фото
 @product_router.delete("/delete_photo/{product_id}", response_model=GetProduct, responses={404: {"model": HTTPNotFoundError}})
-async def delete_photo_product(product_id: int, delete_images: Images, user: UserDB = Depends(current_superuser)):
+async def delete_photo_product(product_id: int, 
+                               delete_images: Images, 
+                               user: UserDB = Depends(current_superuser)):
     product = await Product.get(id=product_id)
     delete_images = [i for i in delete_images.photo if i in product.photo]
     for img_name in delete_images:
@@ -140,21 +128,16 @@ async def delete_photo_product(product_id: int, delete_images: Images, user: Use
     await product.save()
     return await GetProduct.from_tortoise_orm(await Product.get(id=product_id))
     
-        
+# Удалить все товары
+# @product_router.delete("/delete_all", response_model=Status)
+# async def delete_all_product(user: UserDB = Depends(current_superuser)):
+#     await Product.all().delete()
+#     return Status(message="Все товары удалены")
 
-
-
-
-@product_router.delete("/delete_all", response_model=Status)
-async def delete_all_product(user: UserDB = Depends(current_superuser)):
-    await Product.all().delete()
-    return Status(message="Все товары удалены")
-
-
-
+# Удалить товар
 @product_router.delete("/{product_id}", response_model=Status, responses={404: {"model": HTTPNotFoundError}})
-async def delete_product(product_id, user: UserDB = Depends(current_superuser)):
-    # Сделать отчистку атрибутов для удаленной категории
+async def delete_product(product_id: int, 
+                         user: UserDB = Depends(current_superuser)):
     deleted_count = await Product.get(id=product_id).delete()
     if not deleted_count:
         raise HTTPException(status_code=404, detail=f"Товар #{product_id} не найден.")
@@ -162,11 +145,11 @@ async def delete_product(product_id, user: UserDB = Depends(current_superuser)):
         shutil.rmtree(f'static/product_img/{str(product_id)}')
     return Status(message=f"Товар {product_id} успешно удален.")
 
-
-
-
+# Обновить товар
 @product_router.patch("/{product_id}", response_model=GetProduct, responses={404: {"model": HTTPNotFoundError}})
-async def update_product(product_id, update_product: UpdateProduct, user: UserDB = Depends(current_superuser)):
+async def update_product(product_id: int, 
+                         update_product: UpdateProduct, 
+                         user: UserDB = Depends(current_superuser)):
     """Что бы изменить порядок фото, нужно прислать массив по тому порядку который нужен"""
     product_obj = await Product.get(id=product_id)
     category = await product_obj.category
