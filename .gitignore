@@ -1,0 +1,7 @@
+/venv
+/__pycache__
+/test_pydantic
+**/__pycache__
+settings.py
+/data
+/static
